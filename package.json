@@ -1,0 +1,15 @@
+{
+  "name": "san-patitas-backend",
+  "version": "1.0.0",
+  "description": "Backend MVP para la gestión de vacunación de la Clínica Veterinaria San Patitas",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "dev": "node --watch server.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2"
+  }
+}
