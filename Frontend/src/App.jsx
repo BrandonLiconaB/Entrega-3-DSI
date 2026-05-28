@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   PawPrint,
   UserRound,
@@ -40,6 +40,27 @@ const STATUS = {
   APPLIED: "Aplicada",
   CANCELED: "Cancelada",
 };
+
+const API_BASE_URL =
+  process.env.REACT_APP_API_URL || "http://localhost:3001";
+
+async function apiRequest(path, options = {}) {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+    ...options,
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(data.error || "Ocurrió un error al comunicarse con el backend.");
+  }
+
+  return data;
+}
 
 const initialState = {
   users: [
@@ -245,15 +266,16 @@ const LookupService = {
 
 export default function App() {
   const [users] = useState(initialState.users);
-  const [clients, setClients] = useState(initialState.clients);
-  const [pets, setPets] = useState(initialState.pets);
+  const [clients, setClients] = useState([]);
+  const [pets, setPets] = useState([]);
   const [vaccines] = useState(initialState.vaccines);
-  const [appointments, setAppointments] = useState(initialState.appointments);
-  const [records, setRecords] = useState(initialState.records);
+  const [appointments, setAppointments] = useState([]);
+  const [records, setRecords] = useState([]);
   const [session, setSession] = useState(null);
   const [page, setPage] = useState("dashboard");
   const [loginError, setLoginError] = useState("");
   const [notice, setNotice] = useState(null);
+  const [loading, setLoading] = useState(false);
 
   const [loginForm, setLoginForm] = useState({
     email: "admin@sanpatitas.com",
@@ -309,6 +331,40 @@ export default function App() {
 
   const selectedPet = pets.find((pet) => pet.id === historyPetId) || null;
 
+  async function loadMainData() {
+    const [clientsData, petsData, appointmentsData] = await Promise.all([
+      apiRequest("/api/clients"),
+      apiRequest("/api/pets"),
+      apiRequest("/api/appointments"),
+    ]);
+
+    setClients(clientsData);
+    setPets(petsData);
+    setAppointments(appointmentsData);
+  }
+
+  useEffect(() => {
+    if (!session) return;
+
+    loadMainData().catch((error) => {
+      showNotice("warning", "Error cargando datos", error.message);
+    });
+  }, [session]);
+
+  useEffect(() => {
+    if (!historyPetId) {
+      setRecords([]);
+      return;
+    }
+
+    apiRequest(`/api/vaccinations/history/${historyPetId}`)
+      .then(setRecords)
+      .catch((error) => {
+        setRecords([]);
+        showNotice("warning", "Error consultando historial", error.message);
+      });
+  }, [historyPetId]);
+
   function showNotice(type, title, message) {
     setNotice({ type, title, message });
     window.clearTimeout(showNotice.timer);
@@ -316,19 +372,27 @@ export default function App() {
   }
   showNotice.timer = showNotice.timer || null;
 
-  function handleLogin(event) {
+  async function handleLogin(event) {
     event.preventDefault();
-    const user = AuthService.login(users, loginForm);
-    if (!user) {
-      setLoginError(
-        "Credenciales inválidas. Usa admin@sanpatitas.com o vet@sanpatitas.com con la clave 1234."
-      );
-      return;
-    }
-    setSession(user);
-    setPage("dashboard");
     setLoginError("");
-    showNotice("success", "Sesión iniciada", `Bienvenido, ${user.fullName}.`);
+    setLoading(true);
+
+    try {
+      const data = await apiRequest("/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify(loginForm),
+      });
+
+      setSession(data.user);
+      setPage("dashboard");
+      showNotice("success", "Sesión iniciada", `Bienvenido, ${data.user.fullName}.`);
+    } catch (error) {
+      setLoginError(
+        `${error.message} Usa admin@sanpatitas.com o vet@sanpatitas.com con la clave 1234.`
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   function handleLogout() {
@@ -337,73 +401,58 @@ export default function App() {
     setLoginForm({ email: "admin@sanpatitas.com", password: "1234" });
   }
 
-  function handleCreateClient(event) {
+  async function handleCreateClient(event) {
     event.preventDefault();
-    if (
-      !ValidationService.required([
-        clientForm.name,
-        clientForm.phone,
-        clientForm.email,
-      ])
-    ) {
-      showNotice(
-        "warning",
-        "Datos incompletos",
-        "Debes ingresar nombre, teléfono y correo del cliente."
-      );
-      return;
-    }
+    setLoading(true);
 
-    const newClient = { id: generateId("c"), ...clientForm };
-    setClients((prev) => [...prev, newClient]);
-    setClientForm({ name: "", phone: "", email: "" });
-    showNotice(
-      "success",
-      "Cliente registrado",
-      `${newClient.name} fue creado correctamente.`
-    );
+    try {
+      const data = await apiRequest("/api/clients", {
+        method: "POST",
+        body: JSON.stringify(clientForm),
+      });
+
+      setClients((prev) => [...prev, data.client]);
+      setClientForm({ name: "", phone: "", email: "" });
+      showNotice(
+        "success",
+        "Cliente registrado",
+        `${data.client.name} fue creado correctamente.`
+      );
+    } catch (error) {
+      showNotice("warning", "No se pudo registrar el cliente", error.message);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  function handleCreatePet(event) {
+  async function handleCreatePet(event) {
     event.preventDefault();
-    if (
-      !ValidationService.required([
-        petForm.clientId,
-        petForm.name,
-        petForm.breed,
-        petForm.age,
-      ])
-    ) {
+    setLoading(true);
+
+    try {
+      const data = await apiRequest("/api/pets", {
+        method: "POST",
+        body: JSON.stringify(petForm),
+      });
+
+      setPets((prev) => [...prev, data.pet]);
+      setPetForm({
+        clientId: "",
+        name: "",
+        species: "Canino",
+        breed: "",
+        age: "",
+      });
       showNotice(
-        "warning",
-        "Datos incompletos",
-        "Completa cliente, nombre, raza y edad de la mascota."
+        "success",
+        "Mascota registrada",
+        `${data.pet.name} quedó asociada al cliente.`
       );
-      return;
+    } catch (error) {
+      showNotice("warning", "No se pudo registrar la mascota", error.message);
+    } finally {
+      setLoading(false);
     }
-
-    const newPet = {
-      id: generateId("p"),
-      clientId: petForm.clientId,
-      name: petForm.name,
-      species: petForm.species,
-      breed: petForm.breed,
-      age: Number(petForm.age),
-    };
-
-    setPets((prev) => [...prev, newPet]);
-    setPetForm({
-      clientId: "",
-      name: "",
-      species: "Canino",
-      breed: "",
-      age: "",
-    });
-    showNotice(
-      "success",
-      "Mascota registrada",
-      `${newPet.name} quedó asociada al cliente.`
-    );
   }
 
   function validateCurrentAvailability() {
@@ -413,115 +462,66 @@ export default function App() {
     );
   }
 
-  function handleCreateAppointment(event) {
+  async function handleCreateAppointment(event) {
     event.preventDefault();
+    setLoading(true);
 
-    if (
-      !ValidationService.required([
-        appointmentForm.clientId,
-        appointmentForm.petId,
-        appointmentForm.veterinarianId,
-        appointmentForm.vaccineId,
-        appointmentForm.date,
-        appointmentForm.time,
-      ])
-    ) {
+    try {
+      const data = await apiRequest("/api/appointments", {
+        method: "POST",
+        body: JSON.stringify(appointmentForm),
+      });
+
+      setAppointments((prev) => [...prev, data.appointment]);
+      setAppointmentForm({
+        clientId: "",
+        petId: "",
+        veterinarianId: "u-2",
+        vaccineId: "",
+        date: "",
+        time: "",
+      });
       showNotice(
-        "warning",
-        "Datos incompletos",
-        "Completa todos los campos de la cita."
+        "success",
+        "Cita registrada",
+        "La cita fue creada con estado Programada."
       );
-      return;
+    } catch (error) {
+      showNotice("warning", "No se pudo registrar la cita", error.message);
+    } finally {
+      setLoading(false);
     }
-
-    const availability = validateCurrentAvailability();
-    if (!availability.ok) {
-      showNotice(
-        "warning",
-        "Conflicto de horario",
-        "El veterinario o la mascota ya tienen una cita en ese horario."
-      );
-      return;
-    }
-
-    const newAppointment = {
-      id: generateId("a"),
-      ...appointmentForm,
-      status: STATUS.SCHEDULED,
-    };
-
-    setAppointments((prev) => [...prev, newAppointment]);
-    setAppointmentForm({
-      clientId: "",
-      petId: "",
-      veterinarianId: "u-2",
-      vaccineId: "",
-      date: "",
-      time: "",
-    });
-    showNotice(
-      "success",
-      "Cita registrada",
-      "La cita fue creada con estado Programada."
-    );
   }
 
-  function handleApplyVaccine(event) {
+  async function handleApplyVaccine(event) {
     event.preventDefault();
-    const appointment = appointments.find(
-      (item) => item.id === recordForm.appointmentId
-    );
+    setLoading(true);
 
-    if (!appointment) {
-      showNotice(
-        "warning",
-        "Cita no encontrada",
-        "Selecciona una cita válida."
+    try {
+      const data = await apiRequest("/api/vaccinations/apply", {
+        method: "POST",
+        body: JSON.stringify(recordForm),
+      });
+
+      setRecords((prev) => [...prev, data.record]);
+      setAppointments((prev) =>
+        prev.map((item) =>
+          item.id === data.record.appointmentId
+            ? { ...item, status: STATUS.APPLIED }
+            : item
+        )
       );
-      return;
-    }
-
-    if (appointment.status !== STATUS.SCHEDULED) {
+      setRecordForm({ appointmentId: "", notes: "" });
       showNotice(
-        "warning",
-        "Operación inválida",
-        "Solo puedes aplicar vacunas sobre citas Programadas."
+        "success",
+        "Vacuna registrada",
+        "La cita cambió a Aplicada y se actualizó el historial."
       );
-      return;
+    } catch (error) {
+      showNotice("warning", "No se pudo aplicar la vacuna", error.message);
+    } finally {
+      setLoading(false);
     }
-
-    const intervalValidation = VaccinationService.validateInterval(
-      records,
-      vaccines,
-      appointment
-    );
-    if (!intervalValidation.ok) {
-      showNotice(
-        "warning",
-        "Restricción de intervalo",
-        intervalValidation.message
-      );
-      return;
-    }
-
-    const newRecord = VaccinationService.buildRecord(
-      appointment,
-      recordForm.notes,
-      intervalValidation.vaccine
-    );
-
-    setRecords((prev) => [...prev, newRecord]);
-    setAppointments((prev) =>
-      prev.map((item) =>
-        item.id === appointment.id ? { ...item, status: STATUS.APPLIED } : item
-      )
-    );
-    setRecordForm({ appointmentId: "", notes: "" });
-    showNotice(
-      "success",
-      "Vacuna registrada",
-      "La cita cambió a Aplicada y se actualizó el historial."
-    );
   }
 
   if (!session) {
@@ -637,8 +637,8 @@ export default function App() {
                     Cargar veterinario
                   </button>
                 </div>
-                <button type="submit" style={styles.primaryButton}>
-                  Entrar
+                <button type="submit" style={styles.primaryButton} disabled={loading}>
+                  {loading ? "Procesando..." : "Entrar"}
                 </button>
               </form>
             </div>
@@ -762,9 +762,9 @@ export default function App() {
               <div style={styles.card}>
                 <h2 style={styles.sectionTitle}>Resumen del MVP</h2>
                 <p style={styles.mutedText}>
-                  Arquitectura limpia en frontend monolítico: UI separada de
-                  servicios de negocio y listas preparadas para migrar
-                  fácilmente a backend real.
+                  Frontend React conectado al backend Express: la interfaz consume
+                  servicios REST para registrar clientes, mascotas, citas,
+                  vacunaciones e historial.
                 </p>
                 <div style={styles.summaryGrid}>
                   <StepCard
@@ -799,19 +799,17 @@ export default function App() {
                   />
                 </div>
                 <div style={{ ...styles.cardInset, marginTop: 18 }}>
-                  <strong>Principios SOLID visibles en el frontend:</strong>
+                  <strong>Integración frontend/backend:</strong>
                   <ul style={styles.list}>
                     <li>
-                      Servicios separados: AuthService, ValidationService,
-                      VaccinationService y LookupService.
+                      El frontend consume endpoints REST del backend para las operaciones principales.
                     </li>
                     <li>
                       Componentes reutilizables: NavButton, StatCard, FormField,
                       TableSimple, Notice.
                     </li>
                     <li>
-                      Reglas de negocio concentradas fuera de los componentes
-                      visuales.
+                      Las reglas críticas se validan en el backend y el frontend muestra las respuestas.
                     </li>
                   </ul>
                 </div>
