@@ -8,8 +8,6 @@ El sistema permite administrar clientes, mascotas, citas veterinarias, aplicaci�
 
 🌍 Demo en línea
 
-Frontend desplegado en Vercel:
-
 [San Patitas MVP Live Demo](https://trabajo3dsi-git-main-brandon-lb-s-projects.vercel.app)
 
 ---
