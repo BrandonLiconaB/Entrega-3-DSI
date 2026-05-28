@@ -6,6 +6,14 @@ El sistema permite administrar clientes, mascotas, citas veterinarias, aplicaci�
 
 ---
 
+🌍 Demo en línea
+
+Frontend desplegado en Vercel:
+
+[San Patitas MVP Live Demo](https://trabajo3dsi-git-main-brandon-lb-s-projects.vercel.app)
+
+---
+
 # 🚀 Tecnologías utilizadas
 
 ## Frontend
@@ -112,6 +120,7 @@ El frontend fue construido utilizando separación de responsabilidades y servici
 También se implementaron componentes reutilizables y separación entre lógica de negocio y UI.
 
 ---
+
 
 # 🖥️ Frontend
 
@@ -263,6 +272,12 @@ Este proyecto fue desarrollado como MVP funcional para evidenciar:
 * despliegue en la nube,
 * uso de GitHub,
 * y aplicación de buenas prácticas de desarrollo.
+
+---
+
+🔄 Integración continua básica (CI/CD)
+
+Cada cambio realizado sobre la rama principal (main) genera automáticamente un nuevo despliegue del frontend mediante integración continua con GitHub y Vercel.
 
 ---
 
