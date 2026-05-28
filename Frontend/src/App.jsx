@@ -15,7 +15,7 @@ import {
 
 /**
  * San Patitas MVP Frontend
- * Compatible con CodeSandbox o local usando Vite + React
+ * Compatible con CodeSandbox o local usando Vite + React 
  *
  * Arquitectura limpia aplicada en un solo archivo para fines académicos:
  * - Dominio: entidades y reglas puras
